@@ -3,7 +3,7 @@
 //kUkXE3ET5dBiaWeBinRvda7ZwJPswb6AF9GRL2l3l63  บาส กลุ่ม (นิชดาธานี)เจ้าของบ้าน Home 2
 //odaUjYVOnykrCMKIxi34pPXhyIWxgN4jAXsdUhV5WrX  ธาม (หมู่บ้านอินโดจีน)
 String LINE_TOKEN;
-int Line_stage = 0;
+int Line_stage = 1;
 #include <TridentTD_LineNotify.h>
 #include "types.h"
 #include "HardwareSerial.h";
@@ -40,13 +40,10 @@ int currentMinute;
 int currentSecond;
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, "pool.ntp.org");
-int Random = 0;
 int Fansmoke = 0; //พัดลมดูดอากาศ
 int flamewater = 0; //สปริงเกอร์
 int LampCamera = 0; //ไฟกล้อง
 int PIR_firebase = 0;
-bool FullAlarm = false;
-bool DayMode = false;
 int Counter = 0;
 int sendPhoto = 0;
 bool Doorstat = HIGH;
@@ -54,24 +51,36 @@ bool Fanstat = HIGH;
 int botRequestDelay = 1000;   // mean time between scan messages
 long lastTimeBotRan;     // last time messages' scan has been done
 bool door1stat = true;
-int doortelegram = 0;
+int doortelegram = 1;
 bool doorLockMonitor = false;
-bool NightMode = false;
 int home1 = 0;
 int home2 = 0;
 int home3 = 0;
 int home4 = 0;
 int home5 = 0;
-int firewall = 0;
+int check1 = 1;
+int checkA = 1;
+
+int FlameAlarm = 1;
+int SmokeAlarm = 1;
+
 int flag = 1;
-int PIRStat = 0;
-bool sound = HIGH;
-String PIR_Telegram;
-String DOOR_Telegram;
-String SMOKE_Telegram;
-String Fire_Telegram;
-String Siren_Telegram;
-String Online_Telegram;
+int smoke = 0;
+int flame = 1;
+int Autotime;
+String s1 = "  🆗"; //แก๊ส
+String s2 = "  🆗"; //เปลวไฟ
+String s3 = "  🆗"; //ประตู
+String s4 = "  🆗"; //ผู้บุกรุก
+
+int PIRStat = 1;
+bool sound = LOW;
+String PIR_Telegram = "enable  🟢";
+String DOOR_Telegram = "enable  🟢";
+String SMOKE_Telegram = "enable  🟢";
+String Fire_Telegram = "enable  🟢";
+String Siren_Telegram = "enable  🟢";
+String Online_Telegram = "enable  🟢";
 //*************************************************************เปลี่ยนขา***********************************************************************
 
 
@@ -88,7 +97,6 @@ void handleNewMessages(int numNewMessages);
 void setup(){
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); 
   pinMode(Lamp, OUTPUT);
-  pinMode(Door, OUTPUT);
   pinMode(Fan, OUTPUT);
   pinMode(water, OUTPUT);
   pinMode(smokeA0, INPUT);
@@ -139,57 +147,15 @@ void setup(){
        lon = firebaseData.stringData();
       }
     }
-    
-  if (Firebase.getInt(firebaseData, "/home1/Token/Status/Door")) {
-    if (firebaseData.dataType() == "int") {
-      doortelegram = firebaseData.intData();
-     }
-  }
-  if (Firebase.getInt(firebaseData, "/home1/Token/Status/flag")) {
-    if (firebaseData.dataType() == "int") {
-      flag = firebaseData.intData();
-     }
-  }
-  if (Firebase.getInt(firebaseData, "/home1/Token/Status/PIRStat")) {
-    if (firebaseData.dataType() == "int") {
-      PIRStat = firebaseData.intData();
-     }
-  }
-  if (Firebase.getInt(firebaseData, "/home1/Token/Status/Line")) {
-    if (firebaseData.dataType() == "int") {
-      Line_stage = firebaseData.intData();
-     }
-  }  
-  if (Firebase.getInt(firebaseData, "/home1/Token/Status/fire")) {
-    if (firebaseData.dataType() == "int") {
-      firewall = firebaseData.intData();
-     }
-  }
-    if (Firebase.getString(firebaseData, "/home1/Token/Status/Door1")) {
-      if (firebaseData.dataType() == "string") {
-       DOOR_Telegram = firebaseData.stringData();
-      }
-    }
-    if (Firebase.getString(firebaseData, "/home1/Token/Status/smoke")) {
-      if (firebaseData.dataType() == "string") {
-       SMOKE_Telegram = firebaseData.stringData();
-      }
-    }  
-    if (Firebase.getString(firebaseData, "/home1/Token/Status/fire1")) {
-      if (firebaseData.dataType() == "string") {
-       Fire_Telegram = firebaseData.stringData();
-      }
-    }
-    if (Firebase.getString(firebaseData, "/home1/Token/Status/Line1")) {
-      if (firebaseData.dataType() == "string") {
-       Online_Telegram = firebaseData.stringData();
-      }
-    }      
-    if (Firebase.getString(firebaseData, "/home1/Token/Status/PIRTelegram")) {
-      if (firebaseData.dataType() == "string") {
-       PIR_Telegram = firebaseData.stringData();
-      }
-    }       
+    GetTime();
+    Serial.print(currentHour);
+    Autotime = currentHour;
+    Firebase.setInt(firebaseData, "/home1/Camera/PIR",flag);
+    Firebase.setInt(firebaseData, "/home1/DOORSTAT",door1stat);   
+    check1 = 1;      
+    Firebase.setInt(firebaseData, "/home1/Token/check",check1);
+    checkA = 1;     
+    Firebase.setInt(firebaseData, "/home1/Token/checkA",checkA);           
 }
 
 void GetLine() { // Line กลุ่ม
@@ -256,25 +222,33 @@ void GetTime() {
   Serial.println(currentSecond);
 }
 void loop(){
-  if(FullAlarm){
-    GetTime();
-    if(currentSecond == 32 ){
-      Random = random(2);
-      Serial.println(Random);      
-      digitalWrite(Lamp, Random);                       
-     }     
-   } 
+  GetTime();
+  Firebase.setInt(firebaseData, "/home1/Token/Time",currentMinute);
+  Serial.print("Autotime = ");
+  Serial.println(Autotime);
+  Serial.print("currentHour = ");
+  Serial.println(currentHour);
+  if(Autotime != currentHour){
+      String welcome = "สถานะของเซนเซอร์ต่าง ๆ\n"; 
+      welcome += "แก๊ส : " + String(smoke) + String(s1) + "\n";
+      welcome += "เปลวไฟ : " + String(flame) + String(s2) + "\n";
+      welcome += "ประตู : " + String(door1stat) + String(s3) + "\n";
+      welcome += "ผู้บุกรุก : " + String(PIR_firebase) + String(s4) + "\n";          
+      bot.sendMessage(chatId, welcome, "Markdown");    
+      Autotime = currentHour;
+    }
+  
   if(PIRStat == 1){
+    s4 = "  🆗";
     if (Firebase.getInt(firebaseData, "/home1/Camera/PIRStat")) {
       if (firebaseData.dataType() == "int") {
         PIR_firebase = firebaseData.intData();
       }
     }
     if (PIR_firebase == 1 ) {
-      if (NightMode) {  //โหมดกลางคืน
+      s4 = "  🚨";
         digitalWrite(Lamp, LOW);
-        LampCamera = 1;
-        }      
+        LampCamera = 1;      
         bot.sendMessage(chatId, "ตรวจพบการเคลื่อนไหวในบริเวณบ้าน !!?", "");
       if (Line_stage == 1){
         message = "บ้านเลขที่ 1 ตรวจพบการเคลื่อนไหว ในขณะที่เจ้าของบ้านไม่อยู่ www.google.com/maps/place/" + la + "," + lon ;
@@ -287,25 +261,23 @@ void loop(){
     digitalWrite(buzzer,HIGH);    
     }
     else {
-      if (NightMode) {
         if (LampCamera == 1){
       digitalWrite(Lamp, HIGH);
       LampCamera = 0;
-      }
-      }
+      }      
       }     
   }
   if(doortelegram == 1)   { 
     door1stat = digitalRead(door1); // เซนเซอร์ แม่เหล็ก 0 1   ประตูเปิดเป็น 0 
     if(door1stat == 1 && doorLockMonitor == 1) {                              //door1stat = 1   และ doorLockMonitor = 1
+      s3 = "  🆗";
       bot.sendMessage(chatId, "ประตูปิดแล้ว", "");     
       Firebase.setInt(firebaseData, "/home1/DOORSTAT",door1stat);
-      if (NightMode) {  //โหมดกลางคืน
-      digitalWrite(Lamp, HIGH);
-        }      
+      digitalWrite(Lamp, HIGH);      
       doorLockMonitor =  false;                                         //door1stat = 1   และ doorLockMonitor = 0
      }
     if(door1stat == 0 && doorLockMonitor == 0) {                              //door1stat = 0   และ doorLockMonitor = 0
+      s3 = "  🚨";
       bot.sendMessage(chatId, "ตรวจพบการเปิดประตู !!", "");
       Firebase.setInt(firebaseData, "/home1/DOORSTAT",door1stat);
       digitalWrite(buzzer,sound);
@@ -314,9 +286,7 @@ void loop(){
       delay(500);
       }
       digitalWrite(buzzer,HIGH);
-      if (NightMode) {  //โหมดกลางคืน
       digitalWrite(Lamp, LOW);
-        }
       if (Line_stage == 1){
         message = "บ้านเลขที่ 1 ตรวจพบการงัดแงะประตู หน้าต่างที่ www.google.com/maps/place/" + la + "," + lon ;
         GetLine();
@@ -324,44 +294,74 @@ void loop(){
       doorLockMonitor = true;                                         //door1stat = 0   และ doorLockMonitor = 1
         }
   }
-  if(firewall == 1){  
-  int smoke = analogRead(smokeA0);
-  smoke = smoke/3;
+  if(SmokeAlarm == 1){  
+  smoke = analogRead(smokeA0);
+  smoke = smoke/2.5;
+  if (smoke > 1023) {
+   smoke = 1023; 
+   }
   Firebase.setInt(firebaseData, "/home1/SMOKE",smoke);
   delay(100);
-  int flame = digitalRead(FlameA3);
-  Firebase.setInt(firebaseData, "/home1/FLAME",flame);
-  delay(100);
-
-    if (smoke > 749 || flame == 0 ) { 
-    Serial.println("GAS OR FLAME DECTION!");
-    bot.sendMessage(chatId, "ตรวจพบแก๊ส และเปลวไฟภายในบริเวณบ้าน", "");    
+    if (smoke > 749) {  //แก๊ส       
     digitalWrite(buzzer,sound);
     if (sound == LOW){
-       delay(500);                      }
+       delay(500);
+       }
     digitalWrite(buzzer,HIGH);
-    if (flame == 0 && flamewater == 0) {
-      digitalWrite(water, LOW);  
-      flamewater = 1;   
-      }
-    if (smoke > 1600 && Fansmoke == 0 ) {
-      digitalWrite(Fan, LOW);
-      Fansmoke = 1; 
-          
-      }      
+    if (smoke > 749 && Fansmoke == 0 ) {
+      bot.sendMessage(chatId, "ตรวจพบแก๊สรั่วไหลภายในบริเวณบ้าน", "");
       if (Line_stage == 1){
-        message = "บ้านเลขที่ 1 ตรวจพบแก๊ส และเปลวไฟภายในบริเวณ www.google.com/maps/place/" + la + "," + lon ;
+        message = "บ้านเลขที่ 1 ตรวจพบแก๊สรั่วไหลภายในบริเวณ www.google.com/maps/place/" + la + "," + lon ;
         GetLine();
-        }        
-    delay(2000);
+        }      
+      s1 = "  🚨";
+      digitalWrite(Fan, LOW);
+      Fansmoke = 1;           
+      }             
+    delay(100);
     }
-    if (Fansmoke == 1 && smoke < 1600){ //สั่งปิดพัดลม
+    if (Fansmoke == 1 && smoke < 749){ //สั่งปิดพัดลม
+    bot.sendMessage(chatId, "ค่าแก๊สกลับสู่สภาวะปกติ", "");  
+    s1 = "  🆗";
     digitalWrite(Fan, HIGH);
     Fansmoke = 0;
-      }
+      if (Line_stage == 1){
+        message = "บ้านเลขที่ 1 ค่าแก๊สกลับสู่สภาวะปกติ www.google.com/maps/place/" + la + "," + lon ;
+        GetLine();
+        }    
+      }        
+  }
+  if(FlameAlarm == 1){  
+  flame = digitalRead(FlameA3);
+  Firebase.setInt(firebaseData, "/home1/FLAME",flame);
+  delay(100);
+    if ( flame == 0 ) {  //เปลวเพลิง      
+    digitalWrite(buzzer,sound);
+    if (sound == LOW){
+       delay(500);
+       }
+    digitalWrite(buzzer,HIGH);
+    if (flame == 0 && flamewater == 0) {
+      bot.sendMessage(chatId, "ตรวจพบเปลวไฟภายในบริเวณบ้าน", "");
+      if (Line_stage == 1){
+        message = "บ้านเลขที่ 1 ตรวจพบเปลวไฟภายในบริเวณ www.google.com/maps/place/" + la + "," + lon ;
+        GetLine();
+        }      
+      s2 = "  🚨";
+      digitalWrite(water, LOW);  
+      flamewater = 1;   
+      }            
+    delay(100);
+    }
     if (flamewater == 1 && flame == 1) { //สั่งปิดน้ำ
+      bot.sendMessage(chatId, "ขณะนี้ไม่ตรวจพบเปลวไฟแล้ว", ""); 
+      s2 = "  🆗";
       digitalWrite(water, HIGH);  
-      flamewater = 0;   
+      flamewater = 0;
+      if (Line_stage == 1){
+        message = "บ้านเลขที่ 1 ขณะนี้ไม่ตรวจพบเปลวไฟแล้ว www.google.com/maps/place/" + la + "," + lon ;
+        GetLine();
+        }         
       }        
   }
      
@@ -384,7 +384,12 @@ void handleNewMessages(int numNewMessages){
     // Chat id of the requester
     String chat_id = String(bot.messages[i].chat_id);
     if (chat_id != chatId){
+      if (chat_id == "1277761639") {
+        bot.sendMessage(chat_id, "ขณะนี้ระบบกำลังทำงานปกติ", "");
+        }
+      else {  
       bot.sendMessage(chat_id, "Unauthorized user", "");
+        }
       continue;
     }    
     // Print the received message
@@ -398,6 +403,7 @@ void handleNewMessages(int numNewMessages){
         GetLine();
     }        
     if (text == "/Home") {
+      Line_stage = 1;
       String welcome = "เลือกบ้านที่ต้องการแจ้งเตือน\n";      
       welcome += "/Home1 /Home1Off: home 1\n";
       welcome += "/Home2 /Home2Off: home 2\n";
@@ -414,11 +420,7 @@ void handleNewMessages(int numNewMessages){
       home3 = 1;
       home4 = 1;
       home5 = 1;
-      Firebase.setInt(firebaseData, "home1/Social/home1",home1);
-      Firebase.setInt(firebaseData, "home1/Social/home2",home2);
-      Firebase.setInt(firebaseData, "home1/Social/home3",home3);
-      Firebase.setInt(firebaseData, "home1/Social/home4",home4);
-      Firebase.setInt(firebaseData, "home1/Social/home5",home5);    
+      Line_stage = 1;    
       bot.sendMessage(chat_id, "เปิดการแจ้งเตือนบ้านทุกหลัง", "");
     }
     if (text == "/Mute") {
@@ -427,78 +429,60 @@ void handleNewMessages(int numNewMessages){
       home3 = 0;
       home4 = 0;
       home5 = 0;
-      Firebase.setInt(firebaseData, "home1/Social/home1",home1);
-      Firebase.setInt(firebaseData, "home1/Social/home2",home2);
-      Firebase.setInt(firebaseData, "home1/Social/home3",home3);
-      Firebase.setInt(firebaseData, "home1/Social/home4",home4);
-      Firebase.setInt(firebaseData, "home1/Social/home5",home5);    
+      Line_stage = 0;   
       bot.sendMessage(chat_id, "ปิดการแจ้งเตือนบ้านทุกหลัง", "");
     }    
     if (text == "/Home1") {
       home1 = 1;
-      Firebase.setInt(firebaseData, "home1/Social/home1",home1);
       bot.sendMessage(chat_id, "เปิดการแจ้งเตือน Home 1", "");
     }
     if (text == "/Home2") {
       home2 = 1;
-      Firebase.setInt(firebaseData, "home1/Social/home2",home2);
       bot.sendMessage(chat_id, "เปิดการแจ้งเตือน Home 2", "");
     }
     if (text == "/Home3") {
       home3 = 1;
-      Firebase.setInt(firebaseData, "home1/Social/home3",home3);
       bot.sendMessage(chat_id, "เปิดการแจ้งเตือน Home 3", "");
     }
     if (text == "/Home4") {
       home4 = 1;
-      Firebase.setInt(firebaseData, "home1/Social/home4",home4);
       bot.sendMessage(chat_id, "เปิดการแจ้งเตือน Home 4", "");
     }        
     if (text == "/Home5") {
       home5 = 1;
-      Firebase.setInt(firebaseData, "home1/Social/home5",home5);
       bot.sendMessage(chat_id, "เปิดการแจ้งเตือน Home 5", "");
     }     
     if (text == "/Home1Off") {
       home1 = 0;
-      Firebase.setInt(firebaseData, "home1/Social/home1",home1);
       bot.sendMessage(chat_id, "ปิดการแจ้งเตือน Home 1", "");
     }
     if (text == "/Home2Off") {
       home2 = 0;
-      Firebase.setInt(firebaseData, "home1/Social/home2",home2);
       bot.sendMessage(chat_id, "ปิดการแจ้งเตือน Home 2", "");
     }
     if (text == "/Home3Off") {
       home3 = 0;
-      Firebase.setInt(firebaseData, "home1/Social/home3",home3);
       bot.sendMessage(chat_id, "ปิดการแจ้งเตือน Home 3", "");
     }
     if (text == "/Home4Off") {
       home4 = 0;
-      Firebase.setInt(firebaseData, "home1/Social/home4",home4);
       bot.sendMessage(chat_id, "ปิดการแจ้งเตือน Home 4", "");
     }
     if (text == "/Home5Off") {
       home5 = 0;
-      Firebase.setInt(firebaseData, "home1/Social/home5",home5);
       bot.sendMessage(chat_id, "ปิดการแจ้งเตือน Home 5", "");
     }    
     if (text == "/OFFLine") {
       bot.sendMessage(chatId, "ทำการปิดการแจ้งเตือน", "");
       Line_stage = 0;
-      Online_Telegram = "OFF";
-      Firebase.setInt(firebaseData, "/home1/Token/Status/Line",Line_stage);
-      Firebase.setString(firebaseData, "/home1/Token/Status/Line1",Online_Telegram);      
+      Online_Telegram = "disable 🔴";    
     }      
     if (text == "/ONLine") {
       String welcome = "เปิดการแจ้งเตือน\n";      
       welcome += "/Home เลือกบ้านที่ต้องการส่งการแจ้งเตือน\n"; 
       bot.sendMessage(chatId, welcome, "Markdown");
       Line_stage = 1;
-      Online_Telegram = "ON";
-      Firebase.setInt(firebaseData, "/home1/Token/Status/Line",Line_stage);
-      Firebase.setString(firebaseData, "/home1/Token/Status/Line1",Online_Telegram);
+      Online_Telegram = "enable  🟢";
       
     }         
     if (text == "/TurnON") {
@@ -511,60 +495,65 @@ void handleNewMessages(int numNewMessages){
     }
     if (text == "/DoorAlarm") {
        doortelegram = 1;
-       DOOR_Telegram = "ON";      
+       DOOR_Telegram = "enable  🟢";      
        bot.sendMessage(chat_id, "เปิดระบบตรวจจับประตูเรียบร้อยค่ะ", "");
-       Firebase.setInt(firebaseData, "/home1/Token/Status/Door",doortelegram);
-       Firebase.setString(firebaseData, "/home1/Token/Status/Door1",DOOR_Telegram);
     }    
     if (text == "/DisDoorAlarm") {
        doortelegram = 0;
-       DOOR_Telegram = "OFF";
-       bot.sendMessage(chat_id, "ปิดระบบตรวจจับประตูเรียบร้อยค่ะ", "");
-       Firebase.setInt(firebaseData, "/home1/Token/Status/Door",doortelegram);
-       Firebase.setString(firebaseData, "/home1/Token/Status/Door1",DOOR_Telegram);       
-    }                
-    if (text == "/FireWallON") {
-      firewall = 1;
-      SMOKE_Telegram = "ON";
-      Fire_Telegram = "ON";
-      bot.sendMessage(chat_id, "เปิด FireWall", "");
-      Serial.println("เปิด FireWall");
-      Firebase.setInt(firebaseData, "/home1/Token/Status/fire",firewall);
-      Firebase.setString(firebaseData, "/home1/Token/Status/smoke",SMOKE_Telegram);
-      Firebase.setString(firebaseData, "/home1/Token/Status/fire1",Fire_Telegram);
-      
-    }    
-    if (text == "/FireWallOFF") {
-      firewall = 0;
-      SMOKE_Telegram = "OFF";
-      Fire_Telegram = "OFF";      
-      bot.sendMessage(chat_id, "ปิด FireWall", "");
-      Serial.println("ปิด FireWall");
-      Firebase.setInt(firebaseData, "/home1/Token/Status/fire",firewall);
-      Firebase.setString(firebaseData, "/home1/Token/Status/smoke",SMOKE_Telegram);
-      Firebase.setString(firebaseData, "/home1/Token/Status/fire1",Fire_Telegram);
-      
+       DOOR_Telegram = "disable 🔴";
+       digitalWrite(Lamp, HIGH);
+       doorLockMonitor = false;
+       door1stat = HIGH;
+       s3 = "  🆗"; //ประตู
+       Firebase.setInt(firebaseData, "/home1/DOORSTAT",door1stat);
+       bot.sendMessage(chat_id, "ปิดระบบตรวจจับประตูเรียบร้อยค่ะ", "");      
+    }
+    if (text == "/FlameAlarmON") {
+      FlameAlarm = 1;
+      Fire_Telegram = "enable  🟢";      
+      bot.sendMessage(chat_id, "เปิดระบบตรวจจับเปลวไฟ", "");      
+    }
+    if (text == "/FlameAlarmOFF") {
+      FlameAlarm = 0;
+      Fire_Telegram = "disable 🔴"; 
+      s2 = "  🆗";
+      digitalWrite(water, HIGH);  
+      flamewater = 0; 
+      flame = 1;          
+      bot.sendMessage(chat_id, "ปิดระบบตรวจจับเปลวไฟ", ""); 
+      Firebase.setInt(firebaseData, "/home1/FLAME",flame);     
+    }
+    if (text == "/SmokeAlarmON") {
+      SmokeAlarm = 1;
+      SMOKE_Telegram = "enable  🟢";     
+      bot.sendMessage(chat_id, "เปิดระบบตรวจจับควัน", "");     
+    } 
+    if (text == "/SmokeAlarmOFF") {
+      SmokeAlarm = 0;
+      SMOKE_Telegram = "disable 🔴";     
+      bot.sendMessage(chat_id, "ปิดระบบตรวจจับควัน", "");
+      smoke = 0;
+    s1 = "  🆗";
+    digitalWrite(Fan, HIGH);
+    Fansmoke = 0;
+    Firebase.setInt(firebaseData, "/home1/SMOKE",smoke);           
     }
     if (text == "/PirON") {
        flag = 1;
        PIRStat = 1; //เปิดวงเล็บ
-       PIR_Telegram = "ON";
+       PIR_Telegram = "enable  🟢";
        Firebase.setInt(firebaseData, "/home1/Camera/PIR",flag);
        bot.sendMessage(chat_id, "เปิดโหมดตรวจจับ", "");
-       Firebase.setInt(firebaseData, "/home1/Token/Status/flag",flag);
-       Firebase.setInt(firebaseData, "/home1/Token/Status/PIRStat",PIRStat);
-       Firebase.setString(firebaseData, "/home1/Token/Status/PIRTelegram",PIR_Telegram);
-       
+      
     }
     if (text == "/PirOFF") {
        flag = 0;
        PIRStat = 0;
-       PIR_Telegram = "OFF";
+       PIR_Telegram = "disable 🔴";
+       s4 = "  🆗"; //ผู้บุกรุก
+       digitalWrite(Lamp, HIGH);
        Firebase.setInt(firebaseData, "/home1/Camera/PIR",flag);
-       bot.sendMessage(chat_id, "ปิดโหมดตรวจจับ", "");
-       Firebase.setInt(firebaseData, "/home1/Token/Status/flag",flag);
-       Firebase.setInt(firebaseData, "/home1/Token/Status/PIRStat",PIRStat);
-       Firebase.setString(firebaseData, "/home1/Token/Status/PIRTelegram",PIR_Telegram);       
+       bot.sendMessage(chat_id, "ปิดโหมดตรวจจับ", "");      
     }
     if (text == "/Photo") {
        sendPhoto = 1;
@@ -572,7 +561,7 @@ void handleNewMessages(int numNewMessages){
        bot.sendMessage(chat_id, "รับทราบค่ะ นายท่าน ^_^", "");
     }    
     if (text == "/IOT"){
-      String keyboardJson = "[[{ \"text\" : \"TurnON\", \"callback_data\" : \"/TurnON\" },{ \"text\" : \"TurnOFF\", \"callback_data\" : \"/TurnOFF\" }],[{ \"text\" : \"Door\", \"callback_data\" : \"/Door\" },{ \"text\" : \"Fan\", \"callback_data\" : \"/Fan\" }]]";
+      String keyboardJson = "[[{ \"text\" : \"TurnON\", \"callback_data\" : \"/TurnON\" },{ \"text\" : \"TurnOFF\", \"callback_data\" : \"/TurnOFF\" }],[{ \"text\" : \"Fan\", \"callback_data\" : \"/Fan\" }]]";
       bot.sendMessageWithInlineKeyboard(chat_id, "ควบคุมเครื่องใช้ไฟฟ้าภายในบ้าน", "", keyboardJson);      
     }
     if (text == "/Mode"){
@@ -583,174 +572,173 @@ void handleNewMessages(int numNewMessages){
       welcome += "/CloseAll : ปิดระบบรักษาความปลอดภัย\n";             
       bot.sendMessage(chatId, welcome, "Markdown");
     }       
-    if (text == "/Door") {
-      Doorstat = !Doorstat;
-      digitalWrite(Door, Doorstat);
-    } 
     if (text == "/Fan") {
       Fanstat = !Fanstat;
       digitalWrite(Fan, Fanstat);
     } 
     if (text == "/SirenOn") {
       bot.sendMessage(chatId, "เปิดเสียงให้แล้วนะคะ >< ", "");
-      Siren_Telegram = "ON";
+      Siren_Telegram = "enable  🟢";
       sound = LOW;    
     }
     if (text == "/SirenOFF") {
       bot.sendMessage(chatId, "ปิดเสียงให้แล้วนะคะ 0.0", ""); 
-      Siren_Telegram = "OFF";     
+      Siren_Telegram = "disable 🔴";     
       sound = HIGH;    
     }
     if (text == "/CloseAll") {
       bot.sendMessage(chatId, "ทำการปิดระบบรักษาความปลอดภัย", "");
       sound = HIGH;
+      Siren_Telegram = "disable 🔴";
       doortelegram = 0;
-      DOOR_Telegram = "OFF"; 
+      DOOR_Telegram = "disable 🔴"; 
       flag = 0;
       PIRStat = 0;
-      PIR_Telegram = "OFF";
+      PIR_Telegram = "disable 🔴";
       Line_stage = 0;
-      Online_Telegram = "OFF";
-      firewall = 0;
-      SMOKE_Telegram = "OFF";
-      Fire_Telegram = "OFF";
-      FullAlarm = false;
-      NightMode = false;
-      DayMode = false;
+      Online_Telegram = "disable 🔴";
+      FlameAlarm = 0;
+      s2 = "  🆗";
+      digitalWrite(water, HIGH);  
+      flamewater = 0; 
+      flame = 1;     
+      SmokeAlarm = 0; 
+      smoke = 0;
+    s1 = "  🆗";
+    digitalWrite(Fan, HIGH);
+    Fansmoke = 0;           
+      SMOKE_Telegram = "disable 🔴";
+      Fire_Telegram = "disable 🔴";
+      Siren_Telegram = "disable 🔴";
       home1 = 0;
       home2 = 0;
       home3 = 0;
       home4 = 0;
       home5 = 0;
-      Firebase.setInt(firebaseData, "home1/Social/home1",home1);
-      Firebase.setInt(firebaseData, "home1/Social/home2",home2);
-      Firebase.setInt(firebaseData, "home1/Social/home3",home3);
-      Firebase.setInt(firebaseData, "home1/Social/home4",home4);
-      Firebase.setInt(firebaseData, "home1/Social/home5",home5);   
-      Firebase.setInt(firebaseData, "home1/Social/home1",home1);
-      Firebase.setInt(firebaseData, "/home1/Camera/PIR",flag);  
-      Firebase.setInt(firebaseData, "/home1/Mode/DayMode",DayMode);
-      Firebase.setInt(firebaseData, "/home1/Mode/FullAlarm",FullAlarm);
-      Firebase.setInt(firebaseData, "home1/Mode/NightMode",NightMode); 
-      Firebase.setInt(firebaseData, "/home1/Token/Status/Door",doortelegram);
-      Firebase.setString(firebaseData, "/home1/Token/Status/Door1",DOOR_Telegram);
-      Firebase.setInt(firebaseData, "/home1/Token/Status/fire",firewall);
-      Firebase.setString(firebaseData, "/home1/Token/Status/smoke",SMOKE_Telegram);
-      Firebase.setString(firebaseData, "/home1/Token/Status/fire1",Fire_Telegram);
-      Firebase.setInt(firebaseData, "/home1/Token/Status/Line",Line_stage);
-      Firebase.setString(firebaseData, "/home1/Token/Status/Line1",Online_Telegram);
-      Firebase.setInt(firebaseData, "/home1/Token/Status/flag",flag);
-      Firebase.setInt(firebaseData, "/home1/Token/Status/PIRStat",PIRStat);
-      Firebase.setString(firebaseData, "/home1/Token/Status/PIRTelegram",PIR_Telegram);                         
+      digitalWrite(Lamp, HIGH);
+       doorLockMonitor = false;
+       door1stat = HIGH;
+       s3 = "  🆗"; //ประตู
+       s4 = "  🆗"; //ผู้บุกรุก
+       Firebase.setInt(firebaseData, "/home1/FLAME",flame);
+       Firebase.setInt(firebaseData, "/home1/DOORSTAT",door1stat);      
+      Firebase.setInt(firebaseData, "/home1/Camera/PIR",flag);
+      Firebase.setInt(firebaseData, "/home1/SMOKE",smoke);                          
     }            
     if (text == "/DayMode") {
-      String welcome = "โหมด ขณะอยู่ในบ้าน\n";     
-      welcome += "เซนเซอร์ และการแจ้งเตือนทุกอย่างจะถูกปิด จะเหลือแค่เพียงตัวตรวจจับอัคคีภัย\n";
-      welcome += "/start : เมนูเพิ่มเติม\n";      
-      bot.sendMessage(chatId, welcome, "Markdown");
       sound = HIGH;
+      Siren_Telegram = "disable 🔴";
       doortelegram = 0;
-      DOOR_Telegram = "OFF"; 
+      DOOR_Telegram = "disable 🔴"; 
       flag = 0;
       PIRStat = 0;
-      PIR_Telegram = "OFF";
+      PIR_Telegram = "disable 🔴";
       Line_stage = 0;
-      Online_Telegram = "OFF";
-      firewall = 1;
-      SMOKE_Telegram = "ON";
-      Fire_Telegram = "ON";      
-      DayMode = true;
+      Online_Telegram = "disable 🔴";
+      FlameAlarm = 1;
+      SmokeAlarm = 1;      
+      SMOKE_Telegram = "enable  🟢";
+      Fire_Telegram = "enable  🟢";
+      home1 = 0;
+      home2 = 0;
+      home3 = 0;
+      home4 = 0;
+      home5 = 0; 
+      digitalWrite(Lamp, HIGH);           
+       doorLockMonitor = false;
+       door1stat = HIGH;
+       s3 = "  🆗"; //ประตู
+       s4 = "  🆗"; //ผู้บุกรุก
+       Firebase.setInt(firebaseData, "/home1/DOORSTAT",door1stat);      
       Firebase.setInt(firebaseData, "/home1/Camera/PIR",flag);
-      Firebase.setInt(firebaseData, "/home1/Mode/DayMode",DayMode);
-      Firebase.setInt(firebaseData, "/home1/Token/Status/Door",doortelegram);
-      Firebase.setString(firebaseData, "/home1/Token/Status/Door1",DOOR_Telegram);
-      Firebase.setInt(firebaseData, "/home1/Token/Status/fire",firewall);
-      Firebase.setString(firebaseData, "/home1/Token/Status/smoke",SMOKE_Telegram);
-      Firebase.setString(firebaseData, "/home1/Token/Status/fire1",Fire_Telegram);
-      Firebase.setInt(firebaseData, "/home1/Token/Status/Line",Line_stage);
-      Firebase.setString(firebaseData, "/home1/Token/Status/Line1",Online_Telegram);
-      Firebase.setInt(firebaseData, "/home1/Token/Status/flag",flag);
-      Firebase.setInt(firebaseData, "/home1/Token/Status/PIRStat",PIRStat);
-      Firebase.setString(firebaseData, "/home1/Token/Status/PIRTelegram",PIR_Telegram);                            
+      String welcome = "โหมด ขณะอยู่ในบ้าน\n";      
+      welcome += "ระบบตรวจจับผู้บุกรุก:  " + String(PIR_Telegram) + "\n";
+      welcome += "ระบบตรวจจับประตู:     " + String(DOOR_Telegram) + "\n";
+      welcome += "ระบบตรวจจับควัน:       " + String(SMOKE_Telegram) + "\n";
+      welcome += "ระบบตรวจจับเปลวไฟ: " + String(Fire_Telegram) + "\n";
+      welcome += "เสียงไซเรน:                  " + String(Siren_Telegram) + "\n";
+      welcome += "แจ้งเตือนเพื่อนบ้าน:     " + String(Online_Telegram) + "\n";          
+      bot.sendMessage(chatId, welcome, "Markdown");                             
+                                  
     }
     if (text == "/NightMode") {
-      String welcome = "โหมด ขณะนอนหลับ\n";     
-      welcome += "มีการเปิดใช้งานเซนเซอร์ป้องกันขโมย ตรวจจับอัคคีภัย และประตูหน้าต่าง พร้อมเสียงไซเรนเตือน หากเซนเซอร์จับการเคลื่อนไหวได้ไฟหน้าบ้านจะติด\n";
-      welcome += "/start : เมนูเพิ่มเติม\n";            
-      bot.sendMessage(chatId, welcome, "Markdown");
-      NightMode = !NightMode;
       sound = LOW;
+      Siren_Telegram = "enable  🟢";
       doortelegram = 1;
-      DOOR_Telegram = "ON"; 
+      DOOR_Telegram = "enable  🟢"; 
       flag = 1;
       PIRStat = 1;
-      PIR_Telegram = "ON";
-      Line_stage = 0;
-      Online_Telegram = "OFF";
-      firewall = 1;
-      SMOKE_Telegram = "ON";
-      Fire_Telegram = "ON";      
-      Firebase.setInt(firebaseData, "/home1/Camera/PIR",flag);
-      Firebase.setInt(firebaseData, "home1/Mode/NightMode",NightMode);
-      Firebase.setInt(firebaseData, "/home1/Token/Status/Door",doortelegram);
-      Firebase.setString(firebaseData, "/home1/Token/Status/Door1",DOOR_Telegram);
-      Firebase.setInt(firebaseData, "/home1/Token/Status/fire",firewall);
-      Firebase.setString(firebaseData, "/home1/Token/Status/smoke",SMOKE_Telegram);
-      Firebase.setString(firebaseData, "/home1/Token/Status/fire1",Fire_Telegram);
-      Firebase.setInt(firebaseData, "/home1/Token/Status/Line",Line_stage);
-      Firebase.setString(firebaseData, "/home1/Token/Status/Line1",Online_Telegram);
-      Firebase.setInt(firebaseData, "/home1/Token/Status/flag",flag);
-      Firebase.setInt(firebaseData, "/home1/Token/Status/PIRStat",PIRStat);
-      Firebase.setString(firebaseData, "/home1/Token/Status/PIRTelegram",PIR_Telegram);                         
+      PIR_Telegram = "enable  🟢";
+      Line_stage = 1;
+      Online_Telegram = "enable  🟢";
+      FlameAlarm = 1;
+      SmokeAlarm = 1;      
+      SMOKE_Telegram = "enable  🟢";
+      Fire_Telegram = "enable  🟢";  
+      home1 = 0;
+      home2 = 0;
+      home3 = 0;
+      home4 = 0;
+      home5 = 0;          
+      Firebase.setInt(firebaseData, "/home1/Camera/PIR",flag); 
+      String welcome = "โหมด ขณะนอนหลับ\n";      
+      welcome += "ระบบตรวจจับผู้บุกรุก:  " + String(PIR_Telegram) + "\n";
+      welcome += "ระบบตรวจจับประตู:     " + String(DOOR_Telegram) + "\n";
+      welcome += "ระบบตรวจจับควัน:       " + String(SMOKE_Telegram) + "\n";
+      welcome += "ระบบตรวจจับเปลวไฟ: " + String(Fire_Telegram) + "\n";
+      welcome += "เสียงไซเรน:                  " + String(Siren_Telegram) + "\n";
+      welcome += "แจ้งเตือนเพื่อนบ้าน:     " + String(Online_Telegram) + "\n";               
+      bot.sendMessage(chatId, welcome, "Markdown");                            
          
     }
-    if (text == "/FullAlarm") {
-      String welcome = "เปิดโหมด ไม่มีใครอยู่บ้าน\n";     
-      welcome += "เซนเซอร์ทุกอย่างจะถูกเปิด และมีการแรนด้อมเปิด-ปิดไฟให้เหมือนกับว่ามีคนอาศัยอยู่\n";
-      welcome += "/start : เมนูเพิ่มเติม\n";                 
-      bot.sendMessage(chatId, welcome, "Markdown");      
+    if (text == "/FullAlarm") {     
       sound = LOW;
+      Siren_Telegram = "enable  🟢";
       doortelegram = 1;
-      DOOR_Telegram = "ON"; 
+      DOOR_Telegram = "enable  🟢"; 
       flag = 1;
       PIRStat = 1;
-      PIR_Telegram = "ON";
-      FullAlarm = true;
+      PIR_Telegram = "enable  🟢";
       Line_stage = 1;
-      Online_Telegram = "ON";
-      firewall = 1;
-      SMOKE_Telegram = "ON";
-      Fire_Telegram = "ON";            
-      Firebase.setInt(firebaseData, "/home1/Camera/PIR",flag);  
-      Firebase.setInt(firebaseData, "/home1/Mode/FullAlarm",FullAlarm); 
-      Firebase.setInt(firebaseData, "/home1/Token/Status/Door",doortelegram);
-      Firebase.setString(firebaseData, "/home1/Token/Status/Door1",DOOR_Telegram);
-      Firebase.setInt(firebaseData, "/home1/Token/Status/fire",firewall);
-      Firebase.setString(firebaseData, "/home1/Token/Status/smoke",SMOKE_Telegram);
-      Firebase.setString(firebaseData, "/home1/Token/Status/fire1",Fire_Telegram); 
-      Firebase.setInt(firebaseData, "/home1/Token/Status/Line",Line_stage);
-      Firebase.setString(firebaseData, "/home1/Token/Status/Line1",Online_Telegram);
-      Firebase.setInt(firebaseData, "/home1/Token/Status/flag",flag);
-      Firebase.setInt(firebaseData, "/home1/Token/Status/PIRStat",PIRStat);
-      Firebase.setString(firebaseData, "/home1/Token/Status/PIRTelegram",PIR_Telegram);                        
+      Online_Telegram = "enable  🟢";
+      FlameAlarm = 1;
+      SmokeAlarm = 1;      
+      SMOKE_Telegram = "enable  🟢";
+      Fire_Telegram = "enable  🟢";
+      home1 = 1;
+      home2 = 1;
+      home3 = 1;
+      home4 = 1;
+      home5 = 1;                  
+      Firebase.setInt(firebaseData, "/home1/Camera/PIR",flag);
+      String welcome = "โหมด ไม่มีใครอยู่บ้าน\n";     
+      welcome += "ระบบตรวจจับผู้บุกรุก:  " + String(PIR_Telegram) + "\n";
+      welcome += "ระบบตรวจจับประตู:     " + String(DOOR_Telegram) + "\n";
+      welcome += "ระบบตรวจจับควัน:       " + String(SMOKE_Telegram) + "\n";
+      welcome += "ระบบตรวจจับเปลวไฟ: " + String(Fire_Telegram) + "\n";
+      welcome += "เสียงไซเรน:                  " + String(Siren_Telegram) + "\n";
+      welcome += "แจ้งเตือนเพื่อนบ้าน:     " + String(Online_Telegram) + "\n";                       
+      bot.sendMessage(chatId, welcome, "Markdown");                                
     }
     if (text == "/Status") {
-      String welcome = "สถานะต่าง ๆ ของเซนเซอร์\n";
-      welcome += "ระบบตรวจจับผู้บุกรุก: " + String(PIR_Telegram) + "\n";
-      welcome += "ระบบตรวจจับประตู: " + String(DOOR_Telegram) + "\n";
-      welcome += "ระบบตรวจจับควัน: " + String(SMOKE_Telegram) + "\n";
+      String welcome = "สถานะระบบรักษาความปลอดภัย\n";
+      welcome += "ระบบตรวจจับผู้บุกรุก:  " + String(PIR_Telegram) + "\n";
+      welcome += "ระบบตรวจจับประตู:     " + String(DOOR_Telegram) + "\n";
+      welcome += "ระบบตรวจจับควัน:       " + String(SMOKE_Telegram) + "\n";
       welcome += "ระบบตรวจจับเปลวไฟ: " + String(Fire_Telegram) + "\n";
-      welcome += "เสียงไซเรน: " + String(Siren_Telegram) + "\n";
-      welcome += "การแจ้งเตือนเพื่อนบ้าน: " + String(Online_Telegram) + "\n";            
+      welcome += "เสียงไซเรน:                  " + String(Siren_Telegram) + "\n";
+      welcome += "แจ้งเตือนเพื่อนบ้าน:     " + String(Online_Telegram) + "\n";
+      welcome += "สถานะต่าง ๆ ของเซนเซอร์\n";  
+      welcome += "แก๊ส : " + String(smoke) + String(s1) + "\n";
+      welcome += "เปลวไฟ : " + String(flame) + String(s2) + "\n";
+      welcome += "ประตู : " + String(door1stat) + String(s3) + "\n";
+      welcome += "ผู้บุกรุก : " + String(PIR_firebase) + String(s4) + "\n";          
       bot.sendMessage(chat_id, welcome, "Markdown");
     
       String keyboardJson = "[[{ \"text\" : \"Firebase\", \"url\" : \"https://console.firebase.google.com/u/0/project/esp32-e7cd8/database/esp32-e7cd8-default-rtdb/data\" }]]";
       bot.sendMessageWithInlineKeyboard(chat_id, "ดูสถานะได้ที่ Firebase", "", keyboardJson);
     }
-    if (text == "/"){
-      String keyboardJson = "[[{ \"text\" : \"Start\", \"callback_data\" : \"/start\" }]]";
-      bot.sendMessageWithInlineKeyboard(chat_id, "กด /start เพื่อเริ่มต้นใช้งาน", "", keyboardJson);
-    }     
+    
     if (bot.messages[i].longitude != 0 || bot.messages[i].latitude != 0) {     
       Firebase.setString(firebaseData, "/home1/Location/Longitude",String(bot.messages[i].longitude, 6));
       Firebase.setString(firebaseData, "/home1/Location/Latitude",String(bot.messages[i].latitude, 6));  
@@ -771,21 +759,23 @@ void handleNewMessages(int numNewMessages){
 
     }             
                         
-    if (text == "/start"){
+    if (text == "/start" || text == "/"){
       String welcome = "Home Security กดคำสั่งเพื่อสั่งการ\n";      
       welcome += "/HELP : ขอความช่วยเหลือ\n";
       welcome += "/ONLine  /OFFLine : แจ้งเตือนไปยัง Line เพื่อนบ้าน หรือยาม\n";
       welcome += "/DoorAlarm : เปิดระบบตรวจจับประตู\n";
       welcome += "/DisDoorAlarm : ปิดระบบตรวจจับประตู\n";
-      welcome += "/FireWallON : เปิด FireWall\n";
-      welcome += "/FireWallOFF : ปิด FireWall\n";
+      welcome += "/FlameAlarmON : เปิดระบบตรวจจับเปลวไฟ\n";
+      welcome += "/FlameAlarmOFF : ปิดระบบตรวจจับเปลวไฟ\n";
+      welcome += "/SmokeAlarmON : เปิดระบบตรวจจับแก๊ส\n";
+      welcome += "/SmokeAlarmOFF : ปิดระบบตรวจจับแก๊ส\n";      
       welcome += "/PirON  /PirOFF : ระบบตรวจจับผู้บุกรุก\n";
       welcome += "/IOT : ควบคุมเครื่องใช้ไฟฟ้า\n";
       welcome += "/Mode : โหมดการทำงาน\n";
       welcome += "/Photo : ถ่ายรูป\n";      
       welcome += "/SirenOn /SirenOFF : เสียงไซเรน\n";
-      welcome += "/Status : ดูสถานะต่าง ๆ\n";
-      welcome += "/Home /Mute : สถานะบ้านข้าง ๆ\n";
+      welcome += "/Status : สถานะของระบบรักษาความปลอดภัย\n";
+      welcome += "/Home /Mute : การแจ้งเตือนภายในหมู่บ้าน\n";
       welcome += "/CloseAll : ปิดระบบรักษาความปลอดภัย\n"; 
       bot.sendMessage(chatId, welcome, "Markdown");
     }
